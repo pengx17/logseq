@@ -515,21 +515,20 @@
               [:th (t :file/last-modified-at)]]]
             [:tbody
              (for [page pages]
-               (let [encoded-page (util/encode-str page)]
-                 [:tr {:key encoded-page}
-                  [:td [:a {:on-click (fn [e]
-                                        (let [repo (state/get-current-repo)
-                                              page (db/pull repo '[*] [:page/name (string/lower-case page)])]
-                                          (when (gobj/get e "shiftKey")
-                                            (state/sidebar-add-block!
-                                             repo
-                                             (:db/id page)
-                                             :page
-                                             {:page page}))))
-                            :href (rfe/href :page {:name encoded-page})}
-                        page]]
-                  [:td [:span.text-gray-500.text-sm
-                        (t :file/no-data)]]]))]]))])))
+               [:tr {:key page}
+                [:td [:a {:on-click (fn [e]
+                                      (let [repo (state/get-current-repo)
+                                            page (db/pull repo '[*] [:page/name (string/lower-case page)])]
+                                        (when (gobj/get e "shiftKey")
+                                          (state/sidebar-add-block!
+                                           repo
+                                           (:db/id page)
+                                           :page
+                                           {:page page}))))
+                          :href (rfe/href :page {:name page})}
+                      page]]
+                [:td [:span.text-gray-500.text-sm
+                      (t :file/no-data)]]])]]))])))
 
 (rum/defcs new < rum/reactive
   (rum/local "" ::title)

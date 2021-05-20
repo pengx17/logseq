@@ -637,7 +637,8 @@
             repo (state/get-current-repo)]
         (outliner-insert-block! {} block new-block sibling?)
         (db/refresh! repo {:key :block/insert
-                           :data [new-block]})))))
+                           :data [new-block]})
+        new-block))))
 
 (defn update-timestamps-content!
   [{:block/keys [repeated? marker] :as block} content]
@@ -2523,10 +2524,13 @@
   [format text]
   (let [tree (->>
               (block/extract-blocks
-               (mldoc/->edn text (mldoc/default-config format)) text true format)
-              (mapv #(assoc % :level (:block/level %)))
-              (blocks-vec->tree))]
-    (paste-block-tree-at-point tree [])))
+               (mldoc/->edn text (mldoc/default-config format)) text true format))
+        min-level (apply min (mapv #(:block/level %) tree))
+        prefix-level (if (> min-level 1) (- min-level 1) 0)
+        tree* (->> tree
+                   (mapv #(assoc % :level (- (:block/level %) prefix-level)))
+                   (blocks-vec->tree))]
+    (paste-block-tree-at-point tree* [])))
 
 (defn- paste-segmented-text
   [format text]

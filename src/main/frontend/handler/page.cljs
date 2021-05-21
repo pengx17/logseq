@@ -7,7 +7,6 @@
             [frontend.config :as config]
             [frontend.handler.common :as common-handler]
             [frontend.handler.route :as route-handler]
-            [frontend.handler.file :as file-handler]
             [frontend.handler.repo :as repo-handler]
             [frontend.handler.editor :as editor-handler]
             [frontend.handler.web.nfs :as web-nfs]
@@ -73,7 +72,7 @@
          tx (block/page-name->map title true)
          format (state/get-preferred-format)
          page-entity [:block/uuid (:block/uuid tx)]
-         create-title-property? (util/include-windows-reserved-chars? title)
+         create-title-property? (and title (util/include-windows-reserved-chars? title))
          default-properties (default-properties-block title format page-entity)
          empty-block {:block/uuid (db/new-block-id)
                       :block/left [:block/uuid (:block/uuid default-properties)]

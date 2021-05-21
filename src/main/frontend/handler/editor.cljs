@@ -980,16 +980,22 @@
                                   zip/up
                                   (zip/append-child [block])))]
                         loc**)) (zip/vector-zip []) blocks)]
-    (zip/root loc)))
+
+    (clojure.walk/postwalk (fn [e] (if (map? e) (dissoc e :level) e)) (zip/root loc))))
 
 (defn- compose-copied-blocks-contents-&-block-tree
   [repo block-ids]
   (let [blocks (db-utils/pull-many repo '[*] (mapv (fn [id] [:block/uuid id]) block-ids))
-        unordered? (:block/unordered (first blocks))
-        format (:block/format (first blocks))
-        level-blocks-map (blocks-with-level blocks)
+        blocks* (flatten
+                 (mapv (fn [b] (if (:collapsed (:block/properties b))
+                                 (vec (tree/sort-blocks (db/get-block-children repo (:block/uuid b)) b))
+                                 [b])) blocks))
+        block-ids* (mapv :block/uuid blocks*)
+        unordered? (:block/unordered (first blocks*))
+        format (:block/format (first blocks*))
+        level-blocks-map (blocks-with-level blocks*)
         level-blocks-uuid-map (into {} (mapv (fn [b] [(:block/uuid b) b]) (vals level-blocks-map)))
-        level-blocks (mapv (fn [uuid] (get level-blocks-uuid-map uuid)) block-ids)
+        level-blocks (mapv (fn [uuid] (get level-blocks-uuid-map uuid)) block-ids*)
         tree (blocks-vec->tree level-blocks)
         contents
         (mapv (fn [block]
@@ -2525,7 +2531,7 @@
   (let [tree (->>
               (block/extract-blocks
                (mldoc/->edn text (mldoc/default-config format)) text true format))
-        min-level (apply min (mapv #(:block/level %) tree))
+        min-level (apply min (mapv :block/level tree))
         prefix-level (if (> min-level 1) (- min-level 1) 0)
         tree* (->> tree
                    (mapv #(assoc % :level (- (:block/level %) prefix-level)))

@@ -1017,6 +1017,12 @@
   []
   (update-state! :editor/new-block-toggle? not))
 
+(defn enable-tooltip?
+  []
+  (get (get (sub-config) (get-current-repo))
+       :ui/enable-tooltip?
+       true))
+
 (defn set-config!
   [repo-url value]
   (set-state! [:config repo-url] value)

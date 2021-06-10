@@ -472,7 +472,7 @@
    {:keys [ok-handler]
     :as opts}]
   (let [input (gdom/getElement (state/get-edit-input-id))
-        pos (util/get-input-pos input)
+        pos (cursor/pos input)
         repo (or repo (state/get-current-repo))
         [fst-block-text snd-block-text] (compute-fst-snd-block-text value pos)
         current-block (assoc block :block/content snd-block-text)
@@ -503,12 +503,14 @@
     :as opts}]
   (let [block-self? (block-self-alone-when-insert? config uuid)
         input (gdom/getElement (state/get-edit-input-id))
-        pos (util/get-input-pos input)
+        pos (cursor/pos input)
         repo (or repo (state/get-current-repo))
         [fst-block-text snd-block-text] (compute-fst-snd-block-text value pos)
         current-block (assoc block :block/content fst-block-text)
         current-block (apply dissoc current-block db-schema/retract-attributes)
         current-block (wrap-parse-block current-block)
+        zooming? (when-let [id (:id config)]
+                   (and (string? id) (util/uuid-string? id)))
         new-m {:block/uuid (db/new-block-id)
                :block/content snd-block-text}
         next-block (-> (merge (select-keys block [:block/parent :block/left :block/format
@@ -523,7 +525,9 @@
                                  :data [current-block next-block]}]
                        (db/refresh! repo opts)))]
     (do
-      (if (or (:ref? config) (not sibling?))
+      (if (or (:ref? config)
+              (not sibling?)
+              zooming?)
         (refresh-fn)
         (do
           (profile "update cache " (update-cache-for-block-insert! repo config block blocks))
@@ -599,7 +603,7 @@
              [properties value] (with-timetracking-properties block value)
              block-self? (block-self-alone-when-insert? config block-id)
              input (gdom/getElement (state/get-edit-input-id))
-             pos (util/get-input-pos input)
+             pos (cursor/pos input)
              repo (or repo (state/get-current-repo))
              [fst-block-text snd-block-text] (compute-fst-snd-block-text value pos)
              insert-fn (match (mapv boolean [block-self? (seq fst-block-text) (seq snd-block-text)])
@@ -745,7 +749,7 @@
                                    [(marker/add-or-update-marker (string/triml content) format marker)  marker]))
           new-content (string/triml new-content)]
       (let [new-pos (commands/compute-pos-delta-when-change-marker
-                     current-input content new-content marker (util/get-input-pos current-input))]
+                     current-input content new-content marker (cursor/pos current-input))]
         (state/set-edit-content! edit-input-id new-content)
         (cursor/move-cursor-to current-input new-pos)))))
 
@@ -1082,7 +1086,7 @@
     (when-let [id (:block/uuid block)]
       (when-let [edit-id (state/get-edit-input-id)]
         (when-let [input (gdom/getElement edit-id)]
-          (when-let [pos (util/get-input-pos input)]
+          (when-let [pos (cursor/pos input)]
             (let [value (gobj/get input "value")
                   page-pattern #"\[\[([^\]]+)]]"
                   block-pattern #"\(\(([^\)]+)\)\)"
@@ -1547,7 +1551,7 @@
   [input before after]
   (when input
     (let [value (gobj/get input "value")
-          pos (util/get-input-pos input)
+          pos (cursor/pos input)
           start-pos (if (= :start before) 0 (- pos (count before)))
           end-pos (if (= :end after) (count value) (+ pos (count after)))]
       (when (>= (count value) end-pos)
@@ -1600,7 +1604,7 @@
   [input]
   (try
     (let [edit-content (or (gobj/get input "value") "")
-          pos (util/get-input-pos input)
+          pos (cursor/pos input)
           last-slash-caret-pos (:pos @*slash-caret-pos)
           last-command (and last-slash-caret-pos (subs edit-content last-slash-caret-pos pos))]
       (when (> pos 0)
@@ -1617,7 +1621,7 @@
   [input]
   (try
     (let [edit-content (gobj/get input "value")
-          pos (util/get-input-pos input)
+          pos (cursor/pos input)
           last-command (subs edit-content
                              (:pos @*angle-bracket-caret-pos)
                              pos)]
@@ -1647,7 +1651,7 @@
 
 (defn get-previous-input-char
   [input]
-  (when-let [pos (util/get-input-pos input)]
+  (when-let [pos (cursor/pos input)]
     (let [value (gobj/get input "value")]
       (when (and (>= (count value) pos)
                  (>= pos 1))
@@ -1655,7 +1659,7 @@
 
 (defn get-previous-input-chars
   [input length]
-  (when-let [pos (util/get-input-pos input)]
+  (when-let [pos (cursor/pos input)]
     (let [value (gobj/get input "value")]
       (when (and (>= (count value) pos)
                  (>= pos 1))
@@ -1663,7 +1667,7 @@
 
 (defn get-current-input-char
   [input]
-  (when-let [pos (util/get-input-pos input)]
+  (when-let [pos (cursor/pos input)]
     (let [value (gobj/get input "value")]
       (when (and (>= (count value) (inc pos))
                  (>= pos 1))
@@ -1922,7 +1926,7 @@
   []
   (when-let [editing-block (db/pull (:db/id (state/get-edit-block)))]
     (let [input (gdom/getElement (state/get-edit-input-id))
-          pos (util/get-input-pos input)
+          pos (cursor/pos input)
           value (:value (get-state))
           [fst-block-text snd-block-text] (compute-fst-snd-block-text value pos)
           parent (:db/id (:block/parent editing-block))
@@ -2305,8 +2309,8 @@
           (cursor/move-cursor-to input selected-start)
           (cursor/move-cursor-to input selected-end))
 
-        (or (and left? (util/input-start? input))
-            (and right? (util/input-end? input)))
+        (or (and left? (cursor/start? input))
+            (and right? (cursor/end? input)))
         (move-to-block-when-cross-boundrary direction)
 
         :else
@@ -2321,7 +2325,7 @@
 (defn- delete-concat [current-block]
   (let [input-id (state/get-edit-input-id)
         ^js input (state/get-input)
-        current-pos (util/get-input-pos input)
+        current-pos (cursor/pos input)
         value (gobj/get input "value")
         repo (state/get-current-repo)
         right (outliner-core/get-right-node (outliner-core/block current-block))
@@ -2347,7 +2351,7 @@
 (defn keydown-delete-handler
   [e]
   (let [^js input (state/get-input)
-        current-pos (util/get-input-pos input)
+        current-pos (cursor/pos input)
         value (gobj/get input "value")
         end? (= current-pos (count value))
         current-block (state/get-edit-block)
@@ -2490,7 +2494,7 @@
           value (gobj/get input "value")
           ctrlKey (gobj/get e "ctrlKey")
           metaKey (gobj/get e "metaKey")
-          pos (util/get-input-pos input)]
+          pos (cursor/pos input)]
       (cond
         (or ctrlKey metaKey)
         nil
@@ -2564,7 +2568,7 @@
   (fn [e key-code]
     (let [k (gobj/get e "key")
           format (:format (get-state))
-          current-pos (util/get-input-pos input)
+          current-pos (cursor/pos input)
           value (gobj/get input "value")
           c (util/nth-safe value (dec current-pos))]
       (when-not (state/get-editor-show-input)

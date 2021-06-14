@@ -83,17 +83,23 @@
           empty-selection? (= selection-start selection-end)
           pattern (pattern-fn format)
           pattern-count (count pattern)
-          prefix (subs value 0 selection-start)
-          wrapped-value (str pattern
-                             (subs value selection-start selection-end)
-                             pattern)
-          postfix (subs value selection-end)
-          new-value (str prefix wrapped-value postfix)]
+          pattern-prefix (subs value (max 0 (- selection-start pattern-count)) selection-start)
+          pattern-suffix (subs value selection-end (min (count value) (+ selection-end pattern-count)))
+          already-wrapped? (= pattern pattern-prefix pattern-suffix)
+          prefix (if already-wrapped?
+                   (subs value 0 (- selection-start pattern-count))
+                   (subs value 0 selection-start))
+          postfix (if already-wrapped?
+                    (subs value (+ selection-end pattern-count))
+                    (subs value selection-end))
+          inner-value (cond-> (subs value selection-start selection-end)
+                        (not already-wrapped?) (#(str pattern % pattern)))
+          new-value (str prefix inner-value postfix)]
       (state/set-edit-content! edit-id new-value)
-      (if empty-selection?
-        (cursor/move-cursor-backward input (count pattern))
-        (let [new-pos (count (str prefix wrapped-value))]
-          (cursor/move-cursor-to input new-pos))))))
+      (cond
+        already-wrapped? (cursor/set-selection-to input (- selection-start pattern-count) (- selection-end pattern-count))
+        empty-selection? (cursor/move-cursor-to input (+ selection-end pattern-count))
+        :else (cursor/set-selection-to input (+ selection-start pattern-count) (+ selection-end pattern-count))))))
 
 (defn bold-format! []
   (format-text! config/get-bold))
@@ -103,6 +109,9 @@
 
 (defn highlight-format! []
   (format-text! config/get-highlight))
+
+(defn strike-through-format! []
+  (format-text! config/get-strike-through))
 
 (defn html-link-format! []
   (when-let [m (get-selection-and-format)]
@@ -728,25 +737,7 @@
           content (state/get-edit-content)
           format (or (db/get-page-format (state/get-current-page))
                      (state/get-preferred-format))
-          cond-fn (fn [marker] (or (and (= :markdown format)
-                                        (util/safe-re-find (re-pattern (str "#*\\s*" marker)) content))
-                                   (util/starts-with? content "TODO")))
-          [new-content marker] (cond
-                                 (cond-fn "TODO")
-                                 [(string/replace-first content "TODO" "DOING") "DOING"]
-                                 (cond-fn "DOING")
-                                 [(string/replace-first content "DOING" "DONE") "DONE"]
-                                 (cond-fn "LATER")
-                                 [(string/replace-first content "LATER" "NOW") "NOW"]
-                                 (cond-fn "NOW")
-                                 [(string/replace-first content "NOW" "DONE") "DONE"]
-                                 (cond-fn "DONE")
-                                 [(string/replace-first content "DONE" "") nil]
-                                 :else
-                                 (let [marker (if (= :now (state/get-preferred-workflow))
-                                                "LATER"
-                                                "TODO")]
-                                   [(marker/add-or-update-marker (string/triml content) format marker)  marker]))
+          [new-content marker] (marker/cycle-marker content format (state/get-preferred-workflow))
           new-content (string/triml new-content)]
       (let [new-pos (commands/compute-pos-delta-when-change-marker
                      current-input content new-content marker (cursor/pos current-input))]
@@ -755,7 +746,7 @@
 
 (defn set-marker
   [{:block/keys [uuid marker content format properties] :as block} new-marker]
-  (let [new-content (-> (string/replace-first content marker new-marker)
+  (let [new-content (-> (string/replace-first content (re-pattern (str "^" marker)) new-marker)
                         (with-marker-time format new-marker))]
     (save-block-if-changed! block new-content)))
 
@@ -2590,7 +2581,9 @@
 
         (when (= c " ")
           (when (or (= (util/nth-safe value (dec (dec current-pos))) "#")
-                    (not (state/get-editor-show-page-search?)))
+                    (not (state/get-editor-show-page-search?))
+                    (and (state/get-editor-show-page-search?)
+                         (not= (util/nth-safe value current-pos) "]")))
             (state/set-editor-show-page-search-hashtag! false)))
 
         (when (and @*show-commands (not= key-code 191)) ; not /

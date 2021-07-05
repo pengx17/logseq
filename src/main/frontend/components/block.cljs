@@ -496,8 +496,10 @@
 
 (rum/defc block-embed < rum/reactive db-mixins/query
   [config id]
-  (let [blocks (db/get-block-and-children (state/get-current-repo) id)]
-    [:div.color-level.embed-block.bg-base-2 {:style {:z-index 2}}
+  (let [blocks (db/get-block-and-children (state/get-current-repo) id)
+        mouse-down-key (if (util/ios?) :on-click :on-mouse-down)]
+    [:div.color-level.embed-block.bg-base-2
+     (assoc {:style {:z-index 2}} mouse-down-key util/stop)
      [:div.px-3.pt-1.pb-2
       (blocks-container blocks (assoc config
                                       :id (str id)
@@ -508,9 +510,13 @@
 (rum/defc page-embed < rum/reactive db-mixins/query
   [config page-name]
   (let [page-name (string/trim (string/lower-case page-name))
-        current-page (state/get-current-page)]
+        current-page (state/get-current-page)
+        mouse-down-key (if (util/ios?)
+                         :on-click
+                         :on-mouse-down)]
     [:div.color-level.embed.embed-page.bg-base-2
-     {:class (if (:sidebar? config) "in-sidebar")}
+      (assoc {:class (when (:sidebar? config) "in-sidebar")}
+        mouse-down-key util/stop)
      [:section.flex.items-center.p-1.embed-header
       [:div.mr-3 svg/page]
       (page-cp config {:block/name page-name})]
@@ -1513,8 +1519,8 @@
         content (if (string? content) (string/trim content) "")
         mouse-down-key (if (util/ios?)
                          :on-click
-                         :on-mouse-down ; TODO: it seems that Safari doesn't work well with on-mouse-down
-                         )
+                         :on-mouse-down) ; TODO: it seems that Safari doesn't work well with on-mouse-down
+
         attrs (cond->
                 {:blockid       (str uuid)
                  :style {:width "100%"}}
@@ -1587,7 +1593,7 @@
         (block-content config block edit-input-id block-id slide?)]
        [:div.flex.flex-row
         (when (and (:embed? config)
-                   (not (:page-embed? config))
+                   ;(not (:page-embed? config))
                    (= (:embed-id config) uuid))
           [:a.opacity-30.hover:opacity-100.svg-small.inline
            {:on-mouse-down (fn [e]
@@ -2076,9 +2082,9 @@
              (->hiccup result (cond-> (assoc config
                                              :custom-query? true
                                              ;; :breadcrumb-show? true
-                                             :group-by-page? blocks-grouped-by-page?
+                                             :group-by-page? blocks-grouped-by-page?)
                                              ;; :ref? true
-                                             )
+
                                 children?
                                 (assoc :ref? true))
                        {:style {:margin-top "0.25rem"
